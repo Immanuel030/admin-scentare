@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, MapPin, Phone, X } from "lucide-react";
-import { getOrderDetails, getOrders, updateOrderStatus } from "./ordersApi.js";
+import { assignRider, getOrderDetails, getOrders, updateOrderStatus } from "./ordersApi.js";
 
 const filters = [["all", "All"], ["pending", "Pending"], ["processing", "Processing"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["cancelled", "Cancelled"]];
 const currency = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
@@ -33,11 +33,15 @@ function statusColor(order) {
   return "bg-[#81672c]/20 text-[#d4b358]";
 }
 
-function OrderDetails({ order, transitions, onClose, onUpdate }) {
+function OrderDetails({ order, transitions, riders, onClose, onUpdate, onAssignRider }) {
   const [nextStatus, setNextStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const fullAddress = [order.line1, order.city, order.province, order.postal_code].filter(Boolean).join(", ");
+  const [riderChoice, setRiderChoice] = useState(order.rider_id ? String(order.rider_id) : "");
+  const [riderBusy, setRiderBusy] = useState(false);
+  const [riderError, setRiderError] = useState("");
+  const fullAddress = [order.line1, order.barangay, order.city, order.province, order.postal_code].filter(Boolean).join(", ");
+  const isDelivery = order.fulfillment_method === "delivery";
 
   async function updateStatus() {
     if (!nextStatus) return;
@@ -53,11 +57,35 @@ function OrderDetails({ order, transitions, onClose, onUpdate }) {
     }
   }
 
+  async function saveRider() {
+    setRiderBusy(true);
+    setRiderError("");
+    try {
+      await onAssignRider(order.id, riderChoice ? Number(riderChoice) : null);
+    } catch (assignError) {
+      setRiderError(assignError.message || "Could not assign a rider.");
+    } finally {
+      setRiderBusy(false);
+    }
+  }
+
   return <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section role="dialog" aria-modal="true" aria-labelledby="order-dialog-title" className="my-auto max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-xl border border-white/10 bg-[#151517] p-5 shadow-2xl sm:p-6">
       <div className="mb-5 flex items-start justify-between gap-4"><div><p className="text-[11px] font-semibold uppercase tracking-[.16em] text-[#c9a954]">Order details</p><div className="mt-1 flex flex-wrap items-center gap-3"><h2 id="order-dialog-title" className="font-serif text-2xl text-[#f0ece5]">{order.order_number}</h2><span className={`rounded-full px-2.5 py-1 text-[10px] font-medium ${statusColor(order)}`}>{displayStatus(order)}</span></div><p className="mt-1 text-sm text-[#8f8a82]">Placed {formatDate(order.created_at, true)}</p></div><button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-md text-[#aaa69f] hover:bg-white/5" aria-label="Close order details"><X size={18} /></button></div>
       <div className="grid gap-4 md:grid-cols-2">
-        <section className="rounded-lg border border-white/[.06] bg-[#101012] p-4"><h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#928d84]">Customer &amp; delivery</h3><p className="text-sm font-medium text-[#e6e1d8]">{order.full_name}</p><p className="mt-1 text-xs text-[#aaa69f]">{order.customer_email || "No email"}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-[#aaa69f]"><Phone size={12} />{order.phone || "No phone"}</p><p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-[#aaa69f]"><MapPin size={12} className="mt-0.5 shrink-0" />{fullAddress || "Store pickup"}</p><p className="mt-3 text-xs text-[#d2bd7a]">{Number(order.shipping_fee) > 0 ? "Local delivery" : "Store pickup"}</p>{order.delivery_instructions && <p className="mt-2 text-xs text-[#88837b]">Instructions: {order.delivery_instructions}</p>}</section>
+        <section className="rounded-lg border border-white/[.06] bg-[#101012] p-4"><h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#928d84]">Customer &amp; delivery</h3><p className="text-sm font-medium text-[#e6e1d8]">{order.full_name}</p><p className="mt-1 text-xs text-[#aaa69f]">{order.customer_email || "No email"}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-[#aaa69f]"><Phone size={12} />{order.phone || "No phone"}</p><p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-[#aaa69f]"><MapPin size={12} className="mt-0.5 shrink-0" />{fullAddress || "Store pickup"}</p><p className="mt-3 text-xs text-[#d2bd7a]">{isDelivery ? "Local delivery" : "Store pickup"}</p>{order.delivery_instructions && <p className="mt-2 text-xs text-[#88837b]">Instructions: {order.delivery_instructions}</p>}
+          {isDelivery && <div className="mt-3 border-t border-white/[.06] pt-3"><p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#928d84]">Rider</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select aria-label="Assign rider" value={riderChoice} onChange={(event) => setRiderChoice(event.target.value)} className="h-9 min-w-36 rounded-md border border-white/[.08] bg-[#0d0d0f] px-2.5 text-xs text-[#d3cec4] outline-none">
+                <option value="">Unassigned</option>
+                {(riders || []).map((rider) => <option key={rider.id} value={rider.id}>{rider.name}</option>)}
+              </select>
+              <button type="button" disabled={riderBusy || String(order.rider_id || "") === riderChoice} onClick={saveRider} className="h-9 rounded-md bg-[#c9a954] px-3 text-xs font-semibold text-[#17140e] disabled:opacity-50">{riderBusy ? "Saving…" : "Save"}</button>
+            </div>
+            {order.rider_phone && <p className="mt-1.5 text-[11px] text-[#88837b]">{order.rider_phone}</p>}
+            {riderError && <p role="alert" className="mt-1.5 text-[11px] text-[#e18b7e]">{riderError}</p>}
+          </div>}
+        </section>
         <section className="rounded-lg border border-white/[.06] bg-[#101012] p-4"><h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#928d84]">Payment</h3><p className="flex justify-between text-xs text-[#aaa69f]"><span>Payment method</span><span className="text-[#d7d2c9]">{readable(order.payment_method)}</span></p><p className="mt-2 flex justify-between text-xs text-[#aaa69f]"><span>Payment status</span><span className="text-[#d7d2c9]">{readable(order.payment_status)}</span></p><p className="mt-2 flex justify-between text-xs text-[#aaa69f]"><span>Subtotal</span><span className="text-[#d7d2c9]">{currency.format(Number(order.subtotal) || 0)}</span></p><p className="mt-2 flex justify-between text-xs text-[#aaa69f]"><span>Delivery fee</span><span className="text-[#d7d2c9]">{currency.format(Number(order.shipping_fee) || 0)}</span></p><p className="mt-3 flex justify-between border-t border-white/[.06] pt-3 text-sm font-semibold text-[#eeeae3]"><span>Total</span><span>{currency.format(Number(order.total) || 0)}</span></p>{order.notes && <p className="mt-3 text-xs text-[#88837b]">Order note: {order.notes}</p>}</section>
       </div>
       <section className="mt-4 rounded-lg border border-white/[.06] bg-[#101012] p-4"><h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#928d84]">Items</h3><div className="divide-y divide-white/[.05]">{(order.items || []).map((item) => <div key={item.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"><span className="grid size-9 shrink-0 place-items-center overflow-hidden rounded border border-white/10 bg-[#0d0d0f]">{item.product_image ? <img src={item.product_image} alt="" className="size-full object-cover" /> : <span className="text-[10px] text-[#77736d]">S</span>}</span><span className="min-w-0 flex-1 truncate text-sm text-[#d7d2c9]">{item.product_name} <span className="text-xs text-[#88837b">× {item.quantity}</span></span><span className="text-xs text-[#d7d2c9]">{currency.format(Number(item.subtotal) || 0)}</span></div>)}{!order.items?.length && <p className="text-xs text-[#88837b]">No item details available.</p>}</div></section>
@@ -130,6 +158,13 @@ export default function OrdersView({ search, onSearchChange, onUpdated }) {
     } finally { setBusy(false); }
   }
 
+  async function handleAssignRider(id, riderId) {
+    await assignRider(id, riderId);
+    const [details] = await Promise.all([getOrderDetails(id), refresh()]);
+    setSelectedOrder(details);
+    onUpdated?.();
+  }
+
   async function exportOrders() {
     setError("");
     try {
@@ -159,7 +194,7 @@ export default function OrdersView({ search, onSearchChange, onUpdated }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[.06] px-4 py-3.5 text-xs text-[#88837b] sm:px-5"><span>Showing {start}–{end} of {Number(data?.total || 0).toLocaleString("en-PH")} orders</span><nav aria-label="Order pages" className="flex items-center gap-1"><button disabled={shownPage <= 1} onClick={() => setPage(Math.max(1, shownPage - 1))} className="rounded border border-white/10 px-2.5 py-1.5 disabled:opacity-35">Previous</button>{pages.map((pageNumber) => <button key={pageNumber} aria-current={pageNumber === shownPage ? "page" : undefined} onClick={() => setPage(pageNumber)} className={`size-8 rounded border text-xs ${pageNumber === shownPage ? "border-[#c9a954]/50 text-[#d7bb6b]" : "border-white/10 text-[#aaa69f] hover:bg-white/[.04]"}`}>{pageNumber}</button>)}<button disabled={shownPage >= Number(data?.pageCount || 1)} onClick={() => setPage(Math.min(Number(data?.pageCount || 1), shownPage + 1))} className="rounded border border-white/10 px-2.5 py-1.5 disabled:opacity-35">Next</button></nav></div>
     </section>
     {detailLoading && <div className="fixed inset-0 z-50 grid place-items-center bg-black/70"><p className="rounded-lg border border-white/10 bg-[#151517] px-5 py-4 text-sm text-[#d7d2c9]">Loading order details…</p></div>}
-    {selectedOrder && <OrderDetails key={`${selectedOrder.order.id}-${selectedOrder.order.updated_at}`} order={selectedOrder.order} transitions={selectedOrder.transitions || []} onClose={() => setSelectedOrder(null)} onUpdate={handleStatusUpdate} />}
+    {selectedOrder && <OrderDetails key={`${selectedOrder.order.id}-${selectedOrder.order.updated_at}`} order={selectedOrder.order} transitions={selectedOrder.transitions || []} riders={selectedOrder.riders || []} onClose={() => setSelectedOrder(null)} onUpdate={handleStatusUpdate} onAssignRider={handleAssignRider} />}
     {busy && <div className="sr-only" role="status">Updating order status…</div>}
   </main>;
 }

@@ -47,7 +47,8 @@ try {
             $historyQuery->execute(['id' => $id]);
             $order['items'] = $itemsQuery->fetchAll();
             $order['history'] = $historyQuery->fetchAll();
-            respond(200, ['order' => $order, 'transitions' => $transitions[$order['status']] ?? []]);
+            $riders = $db->query("SELECT id, name, phone FROM users WHERE role = 'delivery' AND is_active = 1 ORDER BY name ASC")->fetchAll();
+            respond(200, ['order' => $order, 'transitions' => $transitions[$order['status']] ?? [], 'riders' => $riders]);
         }
 
         $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -125,9 +126,45 @@ try {
     }
     require_csrf();
     $input = json_decode(file_get_contents('php://input'), true);
-    if (!is_array($input) || ($input['action'] ?? '') !== 'update_status') {
+    $action = is_array($input) ? (string) ($input['action'] ?? '') : '';
+    if (!in_array($action, ['update_status', 'assign_rider'], true)) {
         respond(400, ['message' => 'Invalid order update.']);
     }
+
+    if ($action === 'assign_rider') {
+        $db = database();
+        $id = filter_var($input['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $riderId = filter_var($input['rider_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$id) {
+            respond(422, ['message' => 'A valid order is required.']);
+        }
+
+        $orderQuery = $db->prepare('SELECT order_number, status FROM orders WHERE id = :id');
+        $orderQuery->execute(['id' => $id]);
+        $order = $orderQuery->fetch();
+        if (!$order) {
+            respond(404, ['message' => 'Order not found.']);
+        }
+
+        if ($riderId) {
+            $riderQuery = $db->prepare("SELECT id, name, phone FROM users WHERE id = :id AND role = 'delivery' AND is_active = 1");
+            $riderQuery->execute(['id' => $riderId]);
+            $rider = $riderQuery->fetch();
+            if (!$rider) {
+                respond(422, ['message' => 'Choose an active rider account.']);
+            }
+            $update = $db->prepare('UPDATE orders SET rider_id = :rider_id, rider_name = :rider_name, rider_phone = :rider_phone, updated_at = CURRENT_TIMESTAMP WHERE id = :id');
+            $update->execute(['rider_id' => $rider['id'], 'rider_name' => $rider['name'], 'rider_phone' => $rider['phone'], 'id' => $id]);
+            log_activity($admin, 'Orders', 'Assigned rider', $order['order_number'] . ' assigned to ' . $rider['name'] . '.');
+        } else {
+            $update = $db->prepare('UPDATE orders SET rider_id = NULL, rider_name = NULL, rider_phone = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = :id');
+            $update->execute(['id' => $id]);
+            log_activity($admin, 'Orders', 'Unassigned rider', $order['order_number'] . ' rider removed.');
+        }
+
+        respond(200, ['message' => 'Rider assignment updated.']);
+    }
+
     $id = filter_var($input['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $nextStatus = (string) ($input['status'] ?? '');
     if (!$id) {
@@ -166,9 +203,23 @@ try {
     $note = 'Status changed from ' . str_replace('_', ' ', $current['status']) . ' to ' . str_replace('_', ' ', $nextStatus) . ' by ' . ($admin['name'] ?? 'Administrator') . '.';
     $history = $db->prepare('INSERT INTO order_status_logs (order_id, status, note, created_at) VALUES (:order_id, :status, :note, CURRENT_TIMESTAMP)');
     $history->execute(['order_id' => $id, 'status' => $nextStatus, 'note' => $note]);
+
+    // Cancelling or returning an order releases the stock it held —
+    // otherwise the cancelled quantity stays locked out of inventory
+    // forever.
+    if (in_array($nextStatus, ['cancelled', 'returned_to_sender'], true)) {
+        $restock = $db->prepare(<<<'SQL'
+            UPDATE products p
+            INNER JOIN order_items oi ON oi.product_id = p.id
+            SET p.stock = p.stock + oi.quantity
+            WHERE oi.order_id = :order_id
+        SQL);
+        $restock->execute(['order_id' => $id]);
+    }
+
     $db->commit();
 
-    notify_order_status($db, (int) $current['user_id'], $current['order_number'], $nextStatus);
+    notify_order_status($db, (int) $current['user_id'], $id, $current['order_number'], $nextStatus);
 
     log_activity($admin, 'Orders', 'Updated order status', $current['order_number'] . ' changed to ' . str_replace('_', ' ', $nextStatus) . '.');
     respond(200, ['message' => 'Order status updated.']);

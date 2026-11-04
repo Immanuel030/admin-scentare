@@ -85,11 +85,21 @@ try {
     $image = trim((string) ($input['image'] ?? ''));
     $price = filter_var($input['price'] ?? null, FILTER_VALIDATE_FLOAT);
     $stock = filter_var($input['stock'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
-    $sizeMl = ($input['size_ml'] ?? '') === '' ? null : filter_var($input['size_ml'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $sizeMl = ($input['size_ml'] ?? '') === '' ? null : filter_var($input['size_ml'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 5000]]);
     $categoryId = ($input['category_id'] ?? '') === '' ? null : filter_var($input['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
-    if ($name === '' || mb_strlen($name) > 255 || $price === false || $price < 0 || $stock === false || ($sizeMl === false) || ($categoryId === false) || mb_strlen($brand) > 255 || mb_strlen($image) > 255) {
-        respond(422, ['message' => 'Enter a product name, valid price and stock, and valid optional details.']);
+    if ($name === '' || mb_strlen($name) > 255 || $price === false || $price <= 0 || $stock === false || ($sizeMl === false) || ($categoryId === false) || mb_strlen($brand) > 255 || mb_strlen($image) > 255) {
+        respond(422, ['message' => 'Enter a product name, a price greater than zero, valid stock, and valid optional details (bottle size up to 5000 ml).']);
+    }
+
+    $duplicateQuery = database()->prepare(
+        $action === 'create'
+            ? 'SELECT id FROM products WHERE LOWER(name) = LOWER(:name) LIMIT 1'
+            : 'SELECT id FROM products WHERE LOWER(name) = LOWER(:name) AND id != :id LIMIT 1'
+    );
+    $duplicateQuery->execute($action === 'create' ? ['name' => $name] : ['name' => $name, 'id' => $id]);
+    if ($duplicateQuery->fetch()) {
+        respond(422, ['message' => 'A product with that name already exists.']);
     }
 
     if ($action === 'create') {

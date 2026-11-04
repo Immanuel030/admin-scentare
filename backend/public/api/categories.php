@@ -62,6 +62,16 @@ try {
         respond(422, ['message' => 'Enter a category name up to 255 characters.']);
     }
 
+    $duplicateQuery = database()->prepare(
+        $action === 'create'
+            ? 'SELECT id FROM categories WHERE LOWER(name) = LOWER(:name) LIMIT 1'
+            : 'SELECT id FROM categories WHERE LOWER(name) = LOWER(:name) AND id != :id LIMIT 1'
+    );
+    $duplicateQuery->execute($action === 'create' ? ['name' => $name] : ['name' => $name, 'id' => $id]);
+    if ($duplicateQuery->fetch()) {
+        respond(422, ['message' => 'A category with that name already exists.']);
+    }
+
     if ($action === 'create') {
         $baseSlug = trim((string) preg_replace('/[^a-z0-9]+/i', '-', strtolower($name)), '-');
         $baseSlug = $baseSlug !== '' ? $baseSlug : 'category';

@@ -1,25 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Package, Plus, X } from "lucide-react";
 import { getProductsData, restockProduct } from "./productsApi.js";
-import { recordActivity } from "./activityApi.js";
+import { getInventoryThresholds, saveInventoryThresholds } from "./inventoryApi.js";
 
 const DEFAULT_THRESHOLDS = { low: 10, critical: 5 };
-
-function readThresholds() {
-  try {
-    const value = JSON.parse(localStorage.getItem("scentare-inventory-thresholds") || "null");
-    if (Number.isInteger(value?.low) && Number.isInteger(value?.critical) && value.low > value.critical && value.critical >= 0) return value;
-  } catch { /* Use the defaults when no saved threshold settings exist. */ }
-  return DEFAULT_THRESHOLDS;
-}
 
 function ThresholdDialog({ thresholds, onClose, onSave }) {
   const [low, setLow] = useState(String(thresholds.low));
   const [critical, setCritical] = useState(String(thresholds.critical));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const invalid = !Number.isInteger(Number(low)) || !Number.isInteger(Number(critical)) || Number(low) <= Number(critical) || Number(critical) < 0;
   const field = "mt-1.5 h-10 w-full rounded-md border border-white/10 bg-[#0e0e10] px-3 text-sm text-[#eeeae3] outline-none focus:border-[#c9a954]/60";
 
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="threshold-dialog-title" className="w-full max-w-md rounded-xl border border-white/10 bg-[#151517] p-5 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-[11px] font-semibold uppercase tracking-[.16em] text-[#c9a954]">Inventory</p><h2 id="threshold-dialog-title" className="mt-1 font-serif text-2xl text-[#f0ece5]">Alert thresholds</h2><p className="mt-1 text-sm text-[#8f8a82]">Set when products need attention.</p></div><button onClick={onClose} className="grid size-9 place-items-center rounded-md text-[#aaa69f] hover:bg-white/5" aria-label="Close dialog"><X size={18} /></button></div><form onSubmit={(event) => { event.preventDefault(); if (!invalid) onSave({ low: Number(low), critical: Number(critical) }); }} className="space-y-4"><label className="block text-xs font-medium text-[#b8b3aa]">Low stock threshold<input className={field} type="number" min="1" step="1" value={low} onChange={(event) => setLow(event.target.value)} required /><span className="mt-1 block font-normal text-[#77736d]">Products at or below this quantity are flagged as low.</span></label><label className="block text-xs font-medium text-[#b8b3aa]">Critical threshold<input className={field} type="number" min="0" step="1" value={critical} onChange={(event) => setCritical(event.target.value)} required /><span className="mt-1 block font-normal text-[#77736d]">Products at or below this quantity are critical.</span></label>{invalid && <p role="alert" className="text-xs text-[#e18b7e]">Low threshold must be greater than the critical threshold.</p>}<div className="flex justify-end gap-2 border-t border-white/[.06] pt-4"><button type="button" onClick={onClose} className="h-10 rounded-md border border-white/10 px-4 text-sm text-[#c8c3ba]">Cancel</button><button disabled={invalid} className="h-10 rounded-md bg-[#c9a954] px-4 text-sm font-semibold text-[#17140e] disabled:opacity-50">Save thresholds</button></div></form></section></div>;
+  async function submit(event) {
+    event.preventDefault();
+    if (invalid) return;
+    setBusy(true);
+    setError("");
+    try {
+      await onSave({ low: Number(low), critical: Number(critical) });
+    } catch (saveError) {
+      setError(saveError.message || "Could not save thresholds.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section role="dialog" aria-modal="true" aria-labelledby="threshold-dialog-title" className="w-full max-w-md rounded-xl border border-white/10 bg-[#151517] p-5 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-[11px] font-semibold uppercase tracking-[.16em] text-[#c9a954]">Inventory</p><h2 id="threshold-dialog-title" className="mt-1 font-serif text-2xl text-[#f0ece5]">Alert thresholds</h2><p className="mt-1 text-sm text-[#8f8a82]">Set when products need attention.</p></div><button onClick={onClose} className="grid size-9 place-items-center rounded-md text-[#aaa69f] hover:bg-white/5" aria-label="Close dialog"><X size={18} /></button></div><form onSubmit={submit} className="space-y-4"><label className="block text-xs font-medium text-[#b8b3aa]">Low stock threshold<input className={field} type="number" min="1" step="1" value={low} onChange={(event) => setLow(event.target.value)} required /><span className="mt-1 block font-normal text-[#77736d]">Products at or below this quantity are flagged as low.</span></label><label className="block text-xs font-medium text-[#b8b3aa]">Critical threshold<input className={field} type="number" min="0" step="1" value={critical} onChange={(event) => setCritical(event.target.value)} required /><span className="mt-1 block font-normal text-[#77736d]">Products at or below this quantity are critical.</span></label>{invalid && <p role="alert" className="text-xs text-[#e18b7e]">Low threshold must be greater than the critical threshold.</p>}{error && <p role="alert" className="text-xs text-[#e18b7e]">{error}</p>}<div className="flex justify-end gap-2 border-t border-white/[.06] pt-4"><button type="button" onClick={onClose} className="h-10 rounded-md border border-white/10 px-4 text-sm text-[#c8c3ba]">Cancel</button><button disabled={invalid || busy} className="h-10 rounded-md bg-[#c9a954] px-4 text-sm font-semibold text-[#17140e] disabled:opacity-50">{busy ? "Saving…" : "Save thresholds"}</button></div></form></section></div>;
 }
 
 function RestockDialog({ product, onClose, onRestocked }) {
@@ -47,9 +55,15 @@ export default function InventoryView({ search, onSearchChange, onUpdated }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
-  const [thresholds, setThresholds] = useState(readThresholds);
+  const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
   const [thresholdDialogOpen, setThresholdDialogOpen] = useState(false);
   const [restockProductItem, setRestockProductItem] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getInventoryThresholds().then((result) => { if (active) setThresholds(result); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   async function refresh() {
     setLoading(true);
@@ -80,10 +94,9 @@ export default function InventoryView({ search, onSearchChange, onUpdated }) {
     return matchesFilter && (!query || `${product.name} ${product.slug} ${product.brand || ""} ${product.category_name || ""}`.toLowerCase().includes(query));
   }).sort((a, b) => Number(a.stock) - Number(b.stock) || a.name.localeCompare(b.name)), [products, filter, thresholds, search]);
 
-  function saveThresholds(value) {
+  async function saveThresholds(value) {
+    await saveInventoryThresholds(value);
     setThresholds(value);
-    localStorage.setItem("scentare-inventory-thresholds", JSON.stringify(value));
-    void recordActivity({ module: "Inventory", action: "Changed inventory alert thresholds", details: `Low-stock threshold set to ${value.low}; critical threshold set to ${value.critical}.` });
     setThresholdDialogOpen(false);
   }
 

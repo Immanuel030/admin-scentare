@@ -33,7 +33,7 @@ function create_admin_notification(PDO $db, string $category, string $title, str
     $statement->execute(['id' => $id, 'category' => $category, 'title' => $title, 'message' => $message, 'recipient_count' => max(0, $recipientCount)]);
 }
 
-function notify_order_status(PDO $db, int $userId, string $orderNumber, string $status): void
+function notify_order_status(PDO $db, int $userId, int $orderId, string $orderNumber, string $status): void
 {
     $messages = [
         'confirmed' => ['order_confirmation', 'Your order has been confirmed and is being prepared.'],
@@ -44,7 +44,9 @@ function notify_order_status(PDO $db, int $userId, string $orderNumber, string $
     if (!isset($messages[$status])) return;
     [$setting, $message] = $messages[$status];
     if (!admin_notification_enabled($db, $setting)) return;
-    create_customer_notification($db, $userId, 'App\\Notifications\\OrderStatusUpdated', ['order_number' => $orderNumber, 'status' => $status, 'message' => $message]);
+    // order_id is required — the shop's notification bell links to the
+    // order by numeric id and breaks the whole page without it.
+    create_customer_notification($db, $userId, 'App\\Notifications\\OrderStatusUpdated', ['order_id' => $orderId, 'order_number' => $orderNumber, 'status' => $status, 'message' => $message]);
     create_admin_notification($db, 'Order update', 'Order #' . $orderNumber . ' updated', $message, 1);
 }
 

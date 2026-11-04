@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../config/api.php';
 require_once __DIR__ . '/../../services/ActivityLogger.php';
+require_once __DIR__ . '/../../services/AdminNotificationService.php';
 
 try {
     $admin = require_admin();
@@ -41,7 +42,7 @@ try {
     if (!$id || !in_array($action, ['approve', 'reject', 'refund'], true)) respond(422, ['message' => 'Choose a valid return action.']);
 
     $db->beginTransaction();
-    $issueQuery = $db->prepare('SELECT i.status, o.order_number FROM order_issues i INNER JOIN orders o ON o.id = i.order_id WHERE i.id = :id FOR UPDATE');
+    $issueQuery = $db->prepare('SELECT i.status, i.order_id, i.user_id, o.order_number, o.payment_status FROM order_issues i INNER JOIN orders o ON o.id = i.order_id WHERE i.id = :id FOR UPDATE');
     $issueQuery->execute(['id' => $id]);
     $issue = $issueQuery->fetch();
     if (!$issue) { $db->rollBack(); respond(404, ['message' => 'Return request not found.']); }
@@ -50,6 +51,10 @@ try {
         'refund' => in_array($issue['status'], ['pending', 'approved'], true),
     };
     if (!$valid) { $db->rollBack(); respond(422, ['message' => 'This request has already been resolved. Refresh and try again.']); }
+    if ($action === 'refund' && $issue['payment_status'] !== 'paid') {
+        $db->rollBack();
+        respond(422, ['message' => 'This order was never marked paid, so there is nothing to refund.']);
+    }
     $nextStatus = ['approve' => 'approved', 'reject' => 'rejected', 'refund' => 'refunded'][$action];
     $update = $db->prepare('UPDATE order_issues SET status = :status, updated_at = CURRENT_TIMESTAMP WHERE id = :id');
     $update->execute(['status' => $nextStatus, 'id' => $id]);
@@ -58,6 +63,19 @@ try {
         $orderUpdate->execute(['id' => $id]);
     }
     $db->commit();
+
+    $messages = [
+        'approve' => 'Your return/refund request for order ' . $issue['order_number'] . ' was approved.',
+        'reject' => 'Your return/refund request for order ' . $issue['order_number'] . ' was not approved.',
+        'refund' => 'Your refund for order ' . $issue['order_number'] . ' has been processed.',
+    ];
+    create_customer_notification($db, (int) $issue['user_id'], 'App\\Notifications\\OrderIssueUpdated', [
+        'order_id' => (int) $issue['order_id'],
+        'order_number' => $issue['order_number'],
+        'status' => $nextStatus,
+        'message' => $messages[$action],
+    ]);
+
     $labels = ['approve' => 'Approved return request', 'reject' => 'Rejected return request', 'refund' => 'Recorded refund'];
     log_activity($admin, 'Returns & Refunds', $labels[$action], 'Request #' . $id . ' for order ' . $issue['order_number'] . ' marked ' . $nextStatus . '.');
     respond(200, ['message' => 'Return request updated.']);

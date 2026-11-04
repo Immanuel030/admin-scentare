@@ -23,3 +23,12 @@ export async function updateOrderStatus(id, status) {
     body: JSON.stringify({ action: "update_status", id, status }),
   });
 }
+
+export async function assignRider(id, riderId) {
+  const csrf = await csrfHeaders();
+  return requestJson("orders.php", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...csrf },
+    body: JSON.stringify({ action: "assign_rider", id, rider_id: riderId }),
+  });
+}
