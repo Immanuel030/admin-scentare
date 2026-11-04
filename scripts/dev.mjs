@@ -36,7 +36,7 @@ function start(label, command, args) {
   return service
 }
 
-start('PHP API', 'php', ['-S', '127.0.0.1:8000', '-t', path.join(projectRoot, 'backend', 'public')])
+start('PHP API', 'php', ['-S', '127.0.0.1:8001', '-t', path.join(projectRoot, 'backend', 'public')])
 start('Vite', process.execPath, [viteEntrypoint])
 
 process.on('SIGINT', () => stopServices(0))
