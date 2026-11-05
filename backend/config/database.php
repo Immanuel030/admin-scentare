@@ -31,11 +31,17 @@ function database(): PDO
     $password = getenv('DB_PASSWORD') ?: '';
     $dsn = "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4";
 
-    $connection = new PDO($dsn, $username, $password, [
+    $options = [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => false,
-    ]);
+    ];
+    if ($ca = getenv('DB_SSL_CA')) {
+        $options[PDO::MYSQL_ATTR_SSL_CA] = $ca;
+        $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+    }
+
+    $connection = new PDO($dsn, $username, $password, $options);
 
     return $connection;
 }

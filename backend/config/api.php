@@ -14,6 +14,39 @@ session_set_cookie_params([
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
+
+final class DatabaseSessionHandler implements SessionHandlerInterface
+{
+    public function __construct(private PDO $db) {}
+    public function open(string $path, string $name): bool { return true; }
+    public function close(): bool { return true; }
+    public function read(string $id): string|false
+    {
+        $q = $this->db->prepare('SELECT data FROM admin_sessions WHERE id = :id');
+        $q->execute(['id' => $id]);
+        return (string) ($q->fetchColumn() ?: '');
+    }
+    public function write(string $id, string $data): bool
+    {
+        return $this->db->prepare('INSERT INTO admin_sessions (id, data, last_activity) VALUES (:id, :data, :t)
+            ON DUPLICATE KEY UPDATE data = VALUES(data), last_activity = VALUES(last_activity)')
+            ->execute(['id' => $id, 'data' => $data, 't' => time()]);
+    }
+    public function destroy(string $id): bool
+    {
+        return $this->db->prepare('DELETE FROM admin_sessions WHERE id = :id')->execute(['id' => $id]);
+    }
+    public function gc(int $max): int|false
+    {
+        $q = $this->db->prepare('DELETE FROM admin_sessions WHERE last_activity < :t');
+        $q->execute(['t' => time() - $max]);
+        return $q->rowCount();
+    }
+}
+if (getenv('SESSION_STORE') === 'database') {
+    session_set_save_handler(new DatabaseSessionHandler(database()), true);
+}
+
 session_start();
 
 function respond(int $status, array $body): never

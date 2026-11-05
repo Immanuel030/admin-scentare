@@ -1,0 +1,10 @@
+{
+  "regions": ["sin1"],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": { "backend/public/api/*.php": { "runtime": "vercel-php@0.7.3" } },
+  "rewrites": [
+    { "source": "/api/:file*", "destination": "/backend/public/api/:file*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

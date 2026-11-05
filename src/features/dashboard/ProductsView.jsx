@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Download, Package, Plus, Search, X } from "lucide-react";
-import { getProductsData, saveProduct, setProductArchived } from "./productsApi.js";
+import { getProductsData, saveProduct, setProductArchived, uploadProductImage } from "./productsApi.js";
+import { resolveImageUrl } from "../../lib/api.js";
 
 const emptyProducts = [];
 const emptyCategories = [];
@@ -31,6 +32,23 @@ function ProductDialog({ product, categories, onClose, onSaved }) {
   } : initialForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  async function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    setError("");
+    try {
+      const { path } = await uploadProductImage(file);
+      setForm((current) => ({ ...current, image: path }));
+    } catch (uploadError) {
+      setError(uploadError.message || "Could not upload this image.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -73,6 +91,18 @@ function ProductDialog({ product, categories, onClose, onSaved }) {
             <label className={labelClass}>Stock<input className={fieldClass} type="number" min="0" step="1" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} required /></label>
             <label className={labelClass}>Bottle size (ml)<input className={fieldClass} type="number" min="1" step="1" value={form.size_ml} onChange={(event) => setForm({ ...form, size_ml: event.target.value })} placeholder="Optional" /></label>
             <label className={`${labelClass} sm:col-span-2`}>Image URL<input className={fieldClass} type="url" value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} maxLength={255} placeholder="https://… (optional)" /></label>
+            <div className="sm:col-span-2 flex items-center gap-3">
+              {form.image ? (
+                <img src={resolveImageUrl(form.image)} alt="" className="size-14 shrink-0 rounded-md border border-white/10 bg-[#0d0d0f] object-cover" onError={(event) => { event.currentTarget.style.visibility = "hidden"; }} />
+              ) : (
+                <span className="grid size-14 shrink-0 place-items-center rounded-md border border-white/10 bg-[#0d0d0f] text-[#8e7945]"><Package size={20} /></span>
+              )}
+              <label className="text-xs font-medium text-[#b8b3aa]">
+                Or upload an image from this computer
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleFileChange} disabled={uploading} className="mt-1.5 block w-full text-xs text-[#b8b3aa] file:mr-3 file:rounded-md file:border-0 file:bg-[#c9a954] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[#17140e] hover:file:bg-[#d8bb68]" />
+              </label>
+              {uploading && <span className="text-xs text-[#8f8a82]">Uploading…</span>}
+            </div>
           </div>
           {error && <p role="alert" className="rounded-md border border-red-400/20 bg-red-400/5 px-3 py-2 text-sm text-[#e18b7e]">{error}</p>}
           <div className="flex justify-end gap-2 border-t border-white/[.06] pt-4">
@@ -231,7 +261,7 @@ export default function ProductsView({ search, onSearchChange, openAdd, onUpdate
                 return <tr key={product.id} className="group hover:bg-white/[.018]">
                   <td className="px-5 py-3.5"><input type="checkbox" checked={selectedIds.has(String(product.id))} onChange={() => toggleSelection(product.id)} aria-label={`Select ${product.name}`} className="accent-[#c9a954]" /></td>
                   <td className="py-3.5 pr-4"><div className="flex min-w-[220px] items-center gap-3">
-                    {product.image ? <img src={product.image} alt="" className="size-10 shrink-0 rounded-md border border-white/10 bg-[#0d0d0f] object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="grid size-10 shrink-0 place-items-center rounded-md border border-white/10 bg-[#0d0d0f] text-[#8e7945]"><Package size={17} /></span>}
+                    {product.image ? <img src={resolveImageUrl(product.image)} alt="" className="size-10 shrink-0 rounded-md border border-white/10 bg-[#0d0d0f] object-cover" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span className="grid size-10 shrink-0 place-items-center rounded-md border border-white/10 bg-[#0d0d0f] text-[#8e7945]"><Package size={17} /></span>}
                     <span className="min-w-0"><span className="block truncate text-sm font-medium text-[#e8e4dc]">{product.name}</span><span className="mt-0.5 block truncate text-[11px] text-[#77736d]">{product.size_ml ? `${product.size_ml} ml` : "Perfume"}{product.slug ? ` · SKU ${product.slug}` : ""}</span></span>
                   </div></td>
                   <td className="py-3.5 pr-4 text-sm text-[#aaa69f]">{product.category_name || "—"}</td>
