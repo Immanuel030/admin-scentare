@@ -1,11 +1,11 @@
 {
   "regions": ["sin1"],
   "builds": [
-    { "src": "backend/public/api/*.php", "use": "vercel-php@0.7.3" },
+    { "src": "backend/public/api/index.php", "use": "vercel-php@0.7.3" },
     { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } }
   ],
   "routes": [
-    { "src": "/api/(.+)", "dest": "/backend/public/api/$1" },
+    { "src": "/api/(.+)", "dest": "/backend/public/api/index.php?file=$1" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
   ]
