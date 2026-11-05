@@ -48,30 +48,61 @@ try {
         respond(422, ['message' => 'Only JPEG, PNG, WEBP, or GIF images are allowed.']);
     }
 
+    $relativeDir = $allowedTargets[$target];
+    $filename = bin2hex(random_bytes(16)) . '.' . $allowedMimes[$mime];
+    $relativePath = $relativeDir . '/' . $filename;
+
+    $supabaseUrl = rtrim((string) getenv('SUPABASE_URL'), '/');
+    $supabaseKey = getenv('SUPABASE_SECRET_KEY');
+    $supabaseBucket = getenv('SUPABASE_BUCKET') ?: 'scentare-uploads';
+
+    if ($supabaseUrl && $supabaseKey) {
+        // Production (Vercel): this server's own disk is read-only, so
+        // uploads go straight to the shared S3-compatible bucket — the
+        // same one the shop's Laravel app writes to via UPLOADS_DISK=s3.
+        $contents = file_get_contents($file['tmp_name']);
+        $ch = curl_init("{$supabaseUrl}/storage/v1/object/{$supabaseBucket}/{$relativePath}");
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => $contents,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $supabaseKey,
+                'Content-Type: ' . $mime,
+                'x-upsert: false',
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 20,
+        ]);
+        $responseBody = curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($status < 200 || $status >= 300) {
+            error_log('Supabase Storage upload failed: ' . $status . ' ' . $responseBody);
+            respond(500, ['message' => 'Could not upload the image to storage.']);
+        }
+
+        respond(200, ['path' => "{$supabaseUrl}/storage/v1/object/public/{$supabaseBucket}/{$relativePath}"]);
+    }
+
     // Local/XAMPP dev: the shop app sits beside this one on the same disk,
     // so we write straight into its public storage folder — the same place
     // `php artisan storage:link` already exposes at <shop>/storage/<path>.
-    // In production (Vercel) this must instead upload to the shared
-    // S3-compatible bucket, matching UPLOADS_DISK=s3 on the shop side.
     $localShopStorage = getenv('SHOP_UPLOADS_PATH');
     if (!$localShopStorage) {
-        respond(500, ['message' => 'Image uploads are not configured on this server (SHOP_UPLOADS_PATH missing).']);
+        respond(500, ['message' => 'Image uploads are not configured on this server (SHOP_UPLOADS_PATH or SUPABASE_URL/SUPABASE_SECRET_KEY missing).']);
     }
 
-    $relativeDir = $allowedTargets[$target];
     $destinationDir = rtrim($localShopStorage, '\\/') . DIRECTORY_SEPARATOR . $relativeDir;
     if (!is_dir($destinationDir) && !mkdir($destinationDir, 0775, true) && !is_dir($destinationDir)) {
         respond(500, ['message' => 'Could not prepare the upload folder.']);
     }
 
-    $filename = bin2hex(random_bytes(16)) . '.' . $allowedMimes[$mime];
     $destinationPath = $destinationDir . DIRECTORY_SEPARATOR . $filename;
-
     if (!move_uploaded_file($file['tmp_name'], $destinationPath)) {
         respond(500, ['message' => 'Could not save the uploaded file.']);
     }
 
-    $relativePath = $relativeDir . '/' . $filename;
     respond(200, ['path' => $relativePath]);
 } catch (Throwable $exception) {
     error_log('Scentare uploads API error: ' . $exception->getMessage());
