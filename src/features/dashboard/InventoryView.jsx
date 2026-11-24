@@ -56,12 +56,16 @@ export default function InventoryView({ search, onSearchChange, onUpdated }) {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("all");
   const [thresholds, setThresholds] = useState(DEFAULT_THRESHOLDS);
+  const [thresholdsLoaded, setThresholdsLoaded] = useState(false);
   const [thresholdDialogOpen, setThresholdDialogOpen] = useState(false);
   const [restockProductItem, setRestockProductItem] = useState(null);
 
   useEffect(() => {
     let active = true;
-    getInventoryThresholds().then((result) => { if (active) setThresholds(result); }).catch(() => {});
+    getInventoryThresholds()
+      .then((result) => { if (active) setThresholds(result); })
+      .catch(() => {})
+      .finally(() => { if (active) setThresholdsLoaded(true); });
     return () => { active = false; };
   }, []);
 
@@ -108,7 +112,7 @@ export default function InventoryView({ search, onSearchChange, onUpdated }) {
   ];
 
   return <main className="mx-auto max-w-[1440px] px-4 pb-10 pt-7 sm:px-7 sm:pt-8 xl:px-9">
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[.18em] text-[#c5a454]">Catalog</p><h1 className="font-serif text-[30px] leading-tight text-[#f0ece5] sm:text-[34px]">Inventory</h1><p className="mt-2 text-[13px] text-[#a09b93]">Monitor stock levels and low-stock thresholds across every SKU.</p></div><button onClick={() => setThresholdDialogOpen(true)} className="h-10 rounded-md border border-white/[.08] px-4 text-xs font-medium text-[#d3cec4] hover:bg-white/[.04]">Set alert thresholds</button></div>
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[.18em] text-[#c5a454]">Catalog</p><h1 className="font-serif text-[30px] leading-tight text-[#f0ece5] sm:text-[34px]">Inventory</h1><p className="mt-2 text-[13px] text-[#a09b93]">Monitor stock levels and low-stock thresholds across every SKU.</p></div><button onClick={() => setThresholdDialogOpen(true)} disabled={!thresholdsLoaded} className="h-10 rounded-md border border-white/[.08] px-4 text-xs font-medium text-[#d3cec4] hover:bg-white/[.04] disabled:cursor-wait disabled:opacity-50">{thresholdsLoaded ? "Set alert thresholds" : "Loading thresholds…"}</button></div>
     {error && <div role="alert" className="mb-4 flex items-center justify-between rounded-md border border-[#873d35]/30 bg-[#873d35]/10 px-4 py-3 text-sm text-[#e18b7e]"><span>{error}</span><button onClick={refresh} className="ml-4 underline">Retry</button></div>}
     <section className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">{cards.map((card) => <article key={card.title} className="rounded-lg border border-white/[.06] bg-[#131315] p-4"><p className="text-xs text-[#8d8982]">{card.title}</p><p className={`mt-2 font-serif text-2xl ${card.tone}`}>{card.value}</p></article>)}</section>
 
