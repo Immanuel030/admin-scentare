@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Boxes,
+  Activity, ArrowDownRight, ArrowRight, ArrowUpRight, Bell, Bike, Boxes,
   ChartNoAxesCombined, ChevronDown, CircleHelp, CreditCard, Grid2X2,
   LogOut, Menu, Package, Percent, RotateCcw, Search, Settings2, ShoppingBag,
   ShoppingCart, Star, Tags, Users, X,
@@ -11,6 +11,7 @@ import ProductsView from "./ProductsView.jsx";
 import CategoriesView from "./CategoriesView.jsx";
 import InventoryView from "./InventoryView.jsx";
 import CustomersView from "./CustomersView.jsx";
+import RidersView from "./RidersView.jsx";
 import SalesReportsView from "./SalesReportsView.jsx";
 import ActivityLogsView from "./ActivityLogsView.jsx";
 import OrdersView from "./OrdersView.jsx";
@@ -36,7 +37,7 @@ const groups = [
     ["Returns & Refunds", RotateCcw, "pending-returns"],
     ["Promotions", Percent],
   ] },
-  { title: "People", links: [["Customers", Users], ["Reviews", Star, "pending-reviews"]] },
+  { title: "People", links: [["Customers", Users], ["Riders", Bike], ["Reviews", Star, "pending-reviews"]] },
   { title: "Insights", links: [["Sales & Reports", ChartNoAxesCombined], ["Activity Logs", Activity]] },
   { title: "System", links: [["Notifications", Bell], ["Admin Account", Settings2]] },
 ];
@@ -188,7 +189,7 @@ function Dashboard({ onLogout, user, onUserUpdated }) {
                     key={label}
                     onClick={() => {
                       setMenuOpen(false);
-                      if (["Products", "Categories", "Inventory", "Orders", "Payments", "Returns & Refunds", "Promotions", "Customers", "Reviews", "Sales & Reports", "Activity Logs", "Notifications", "Admin Account"].includes(label)) {
+                      if (["Products", "Categories", "Inventory", "Orders", "Payments", "Returns & Refunds", "Promotions", "Customers", "Riders", "Reviews", "Sales & Reports", "Activity Logs", "Notifications", "Admin Account"].includes(label)) {
                         setActive(label);
                         setSearch("");
                         setAddProductRequested(false);
@@ -254,7 +255,7 @@ function Dashboard({ onLogout, user, onUserUpdated }) {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder={active === "Products" ? "Search products..." : active === "Categories" ? "Search categories..." : active === "Inventory" ? "Search inventory..." : active === "Orders" ? "Search orders..." : active === "Payments" ? "Search payments..." : active === "Returns & Refunds" ? "Search returns & refunds..." : active === "Promotions" ? "Search promotions..." : active === "Notifications" ? "Search notifications..." : active === "Admin Account" ? "Search admin account..." : active === "Customers" ? "Search customers..." : active === "Reviews" ? "Search reviews..." : active === "Sales & Reports" ? "Search sales & reports..." : active === "Activity Logs" ? "Search activity logs..." : "Search dashboard..."}
+              placeholder={active === "Products" ? "Search products..." : active === "Categories" ? "Search categories..." : active === "Inventory" ? "Search inventory..." : active === "Orders" ? "Search orders..." : active === "Payments" ? "Search payments..." : active === "Returns & Refunds" ? "Search returns & refunds..." : active === "Promotions" ? "Search promotions..." : active === "Notifications" ? "Search notifications..." : active === "Admin Account" ? "Search admin account..." : active === "Customers" ? "Search customers..." : active === "Riders" ? "Search riders..." : active === "Reviews" ? "Search reviews..." : active === "Sales & Reports" ? "Search sales & reports..." : active === "Activity Logs" ? "Search activity logs..." : "Search dashboard..."}
               className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[#62605b]"
             />
           </label>
@@ -310,6 +311,8 @@ function Dashboard({ onLogout, user, onUserUpdated }) {
           <AdminAccountView onUserUpdated={onUserUpdated} />
         ) : active === "Customers" ? (
           <CustomersView search={search} onSearchChange={setSearch} />
+        ) : active === "Riders" ? (
+          <RidersView search={search} onSearchChange={setSearch} />
         ) : active === "Reviews" ? (
           <ReviewsView search={search} onSearchChange={setSearch} onUpdated={refresh} />
         ) : active === "Sales & Reports" ? (

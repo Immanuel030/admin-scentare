@@ -9,7 +9,8 @@ $allowed = [
     'activity.php', 'admin_account.php', 'auth.php', 'categories.php',
     'customers.php', 'dashboard.php', 'inventory.php', 'orders.php',
     'payments.php', 'products.php', 'promotions.php', 'reports.php',
-    'returns.php', 'reviews.php', 'system_notifications.php', 'uploads.php',
+    'returns.php', 'reviews.php', 'riders.php', 'system_notifications.php',
+    'uploads.php',
 ];
 
 $file = basename((string) ($_GET['file'] ?? ''));
